@@ -1,5 +1,7 @@
 # Microservice Development Foundations
 
+> This workshop is currently being developed
+
 Centered around a microservice development process that exposes participants to fundamentals, but also shows how those fundamentals come together into a more tangible workflow. This is a workshop-based training program where participants are encouraged to follow along and, at the end of the guided session, try to apply the learned principles in a practical exercise. The course will have a central git repository that contains:
 
 * Guided sessions for the curriculum below
