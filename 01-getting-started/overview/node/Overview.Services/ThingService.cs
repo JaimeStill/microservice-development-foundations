@@ -15,7 +15,7 @@ public class ThingService(AppDbContext db)
         await db.Things.FindAsync(id);
 
     public async Task<bool> ValidateName(Thing thing) =>
-        await db.Things.AnyAsync(x =>
+        !await db.Things.AnyAsync(x =>
             x.Id != thing.Id
             && x.Name.ToLower() == thing.Name.ToLower()
         );
