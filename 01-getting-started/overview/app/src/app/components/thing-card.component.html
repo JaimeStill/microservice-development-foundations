@@ -1,0 +1,21 @@
+<div class="border-divider rounded background-card"
+     flexContainer
+     flexDirection="column"
+     flexMain="start"
+     flexCross="stretch"
+     [style.width.px]="360">
+    <h1 class="m8 mat-h1">{{thing.name}}</h1>
+    <p class="m8">{{thing.description}}</p>
+    <div class="p8 background-default rounded-bottom"
+         flexContainer
+         flexMain="end"
+         flexCross="center"
+         flexGap="8px">
+        <button mat-button
+                color="warn"
+                (click)="remove.emit(thing)">Remove</button>
+        <button mat-button
+                color="primary"
+                (click)="edit.emit(thing)">Edit</button>
+    </div>
+</div>
