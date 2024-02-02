@@ -992,14 +992,242 @@ You can validate that the `Thing` table contains your data by:
 
 The following sections will provide a very simplified, high-level walkthrough of building an Angular app that interfaces with a SQL-backed REST API.
 
+Before we get into building the app infrastructure, the `ApplicationConfig` located at *overview/app/src/app/app.config.ts* needs to be adjusted to provide the `HttpClient` service, as well as asynchronously load the animations services:
+
+```ts
+import { ApplicationConfig } from '@angular/core';
+import { provideRouter } from '@angular/router';
+import { provideHttpClient } from '@angular/common/http';
+import { provideAnimationsAsync } from '@angular/platform-browser/animations/async';
+import { routes } from './app.routes';
+
+export const appConfig: ApplicationConfig = {
+  providers: [
+    provideRouter(routes),
+    provideHttpClient(),
+    provideAnimationsAsync()
+  ]
+};
+```
+
+Additionally, we need to clean up the [`HomeRoute`](./overview/app/src/app/routes/home.route.ts) component to remove all of the template sample code and give us a fresh starting point:
+
+1. Open [*home.route.scss*](./overview/app/src/app/routes/home.route.scss) and delete all of the contents.
+
+2. Open [*home.route.html*](./overview/app/src/app/routes/home.route.html) and set it to the following:
+
+    ```html
+    <h1 class="m8 mat-title">Home</h1>
+    ```
+
+3. Open [*home.route.ts*](./overview/app/src/app/routes/home.route.ts) and set it to the following:
+
+    ```ts
+    import { Component } from '@angular/core';
+    import { FlexModule } from '../flex';
+
+    @Component({
+        selector: 'home-route',
+        standalone: true,
+        templateUrl: 'home.route.html',
+        styleUrl: 'home.route.scss',
+        imports: [
+            FlexModule
+        ]
+    })
+    export class HomeRoute {}
+    ```
+
 ### Model
 
-### Form
+In order to interface with the data models exposed by the REST API, we need to define a [TypeScript](https://www.typescriptlang.org/docs/handbook/) model that specifies the structure of the returned JSON data.
 
-### Dialog
+1. Inside of the *overview/app/src/app* directory, create a new directory named *models*.
+
+2. Create a new file named *thing.ts* and give it the following value:
+
+    ```ts
+    export interface Thing {
+        id: number;
+        name: string;
+        description: string;
+    }
+    ```
+
+    An `interface` is preferred over a `class` because we only care about the shape of the data. For more details, see [TypeScript: Classes vs Interfaces](https://jameshenry.blog/typescript-classes-vs-interfaces/). 
+
+3. In the *overview/app/src/app/models* directory, create a file named *index.ts* and give it the following value:
+
+    ```ts
+    export * from './thing';
+    ```
+
+    The pattern of specifying an *index.ts* at the root of a directory allows us to treat that directory as a [TypeScript module](https://jameshenry.blog/typescript-classes-vs-interfaces/), simplifying the way we reference infrastructure across the application.
 
 ### Service
 
+Next, we need to create an [Angular Service](https://angular.dev/guide/di/creating-injectable-service) that allows us to interface with the REST API.
+
+For each public endpoint on [`ThingController`](./overview/node/Overview.Api/Controllers/ThingController.cs), we will define a function within the service that handles calling the corresponding endpoint.
+
+1. In the *overview/app/src/app* directory, create a new folder named *services*.
+
+2. In the new *services* directory, create a file named *thing.service.ts*:
+
+    ```ts
+    import { HttpClient } from '@angular/common/http';
+    import { Injectable, Signal } from '@angular/core';
+    import { toSignal } from '@angular/core/rxjs-interop';
+    import { Thing } from '../models';
+    import { environment } from '../../environments/environment';
+
+    @Injectable({
+        providedIn: 'root'
+    })
+    export class ThingService {
+        private api: string = `${environment.server}thing/`;
+
+        constructor(
+            private http: HttpClient
+        ) { }
+
+        getThings(): Signal<Thing[] | undefined> {
+            return toSignal(
+                this.http.get<Thing[]>(
+                    `${this.api}getThings`
+                )
+            );
+        }
+
+        getThing(id: number): Signal<Thing | undefined> {
+            return toSignal(
+                this.http.get<Thing>(
+                    `${this.api}getThing/${id}`
+                )
+            );
+        }
+
+        validateName(thing: Thing): Signal<boolean | undefined> {
+            return toSignal(
+                this.http.post<boolean>(
+                    `${this.api}validateName`,
+                    thing
+                )
+            );
+        }
+
+        validate(thing: Thing): Signal<boolean | undefined> {
+            return toSignal(
+                this.http.post<boolean>(
+                    `${this.api}validate`,
+                    thing
+                )
+            );
+        }
+
+        save(thing: Thing): Signal<Thing | undefined> {
+            return toSignal(
+                this.http.post<Thing>(
+                    `${this.api}save`,
+                    thing
+                )
+            );
+        }
+
+        remove(thing: Thing): Signal<number | undefined> {
+            return toSignal(
+                this.http.delete<number>(
+                    `${this.api}remove`,
+                    { body: thing }
+                )
+            );
+        }
+    }
+    ```
+
+3. Create an *index.ts* file with the following content:
+
+    ```ts
+    export * from './thing.service';
+    ```
+
+In `ThingService`, an `api` variable is created that extracts the root server URL from the [*environment.ts*](./overview/app/src/environments/environment.ts) file. Additionally, the [HttpClient](https://angular.dev/guide/http/making-requests#best-practices) service is injected into the constructor.
+
+Each function signature matches the signature of its corresponding endpoint on the API controller. It executes an HTTP request to the endpoint, passing in any parameters or body data as required, and converts the resulting [Observable](https://rxjs.dev/guide/observable) into a [Signal](https://angular.dev/guide/signals).
+
 ### Route
 
+Now that we have a data model and a service, we can setup our [`HomeRoute`](./overview/app/src/app/routes/home.route.ts) to retrieve and render our `Thing` data.
+
 ### Components
+
+[Angular Components](https://angular.dev/guide/components), at a minimum, consist of an HTML template that defines the structure of the component, as well as a TypeScript file that defines the logic of the component.
+
+Components can optionally define a CSS or SCSS file that defines encapsulated styling rules for the component. Any style rules defined apply only to the component.
+
+Angular also provides the following features for components that make them extremely powerful:
+
+* [**Input Properties**](https://angular.dev/guide/components/inputs) - Define the data that can be provided to the component through attributes.
+
+* [**Output Properties**](https://angular.dev/guide/components/outputs) - Define functional events that allow you to react to changes or interactions with your component
+
+* [**Lifecycle Hooks**](https://angular.dev/guide/components/lifecycle) - Allow you to execute logic at critical points in the lifecycle of the component.
+
+### Form
+
+The first step towards providing a management interface for a data model is to define a form. Angular has a powerful feature called [Reactive forms](https://angular.dev/guide/forms/reactive-forms) that allows you to easily define form controls and implement features such as input validation. There are two steps to defining a form:
+
+1. Defining a function that returns the structure of the form inside of a [`FormGroup`](https://angular.dev/guide/forms/reactive-forms#generate-a-new-component-with-a-formcontrol)
+
+2. Define a component that maps the `FormGroup` to a `<form>` and its `FormControl` properties, which are tied to a data model property and bound to HTML form control elements (e.g. - `<input>`, `<select>`, etc.).
+    * See [MDN - Web Forms](https://developer.mozilla.org/en-US/docs/Learn/Forms) for details on the native HTML specification that Reactive Forms is built upon.
+
+#### `FormGroup` Function
+
+Before we can build out form controls, we need to define a function that generates a `FormGroup`. This can be defined in the *thing.ts* file created in the [Model](#model) section above.
+
+```ts
+import {
+    FormBuilder,
+    FormGroup,
+    Validators
+} from '@angular/forms';
+
+export interface Thing {
+    id: number;
+    name: string;
+    description: string;
+}
+
+export function GenerateThingForm(thing: Thing, fb: FormBuilder): FormGroup {
+    return fb.group({
+        id: [thing.id],
+        name: [
+            thing.name || '',
+            Validators.required
+        ],
+        description: [thing.description]
+    });
+}
+```
+
+The [`FormBuilder`](https://angular.dev/guide/forms/reactive-forms#inject-the-formbuilder-service) is an injectable provider that is provided with the reactive forms module.
+
+`fb.group()` creates a new `FormGroup`, which is an object composed of `FormControl` objects. 
+
+The `name` property is a little different from the other properties; it specifies two different features:
+* If `thing.name` does not have a value, it defaults to the empty string, `''`. Additionally, a [`Validator`](https://angular.dev/guide/forms/form-validation#built-in-validator-functions) is associated with the form control indicating that `name` is a required form field. If no value is present on the form control, the overall form state will be marked invalid.
+
+#### Form Component
+
+Now that we can generate a `FormGroup` for our data model, we need to define the UI component that encapsulates a root `<form>` element and exposes form controls.
+
+1. In the *overview/app/src/app* directory, create a directory named *forms*.
+
+2. Create the following files in the *forms* directory:
+
+    * *thing.form.ts*
+    * *thing.form.html*
+    * *index.ts*
+
+### Dialog
