@@ -1,1 +1,8 @@
 <h1 class="m8 mat-title">Home</h1>
+@if (things.length > 0) {
+    @for (thing of things; track thing.id) {
+        <h3 class="m8 mat-h3 color-primary">{{thing.name}}</h3>
+    }
+} @else {
+    <h3 class="m8 mat-h3 color-warn">No Things Available</h3>
+}

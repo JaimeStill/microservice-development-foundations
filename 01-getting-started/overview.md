@@ -1024,16 +1024,12 @@ Additionally, we need to clean up the [`HomeRoute`](./overview/app/src/app/route
 
     ```ts
     import { Component } from '@angular/core';
-    import { FlexModule } from '../flex';
 
     @Component({
         selector: 'home-route',
         standalone: true,
         templateUrl: 'home.route.html',
-        styleUrl: 'home.route.scss',
-        imports: [
-            FlexModule
-        ]
+        styleUrl: 'home.route.scss'
     })
     export class HomeRoute {}
     ```
@@ -1066,7 +1062,7 @@ In order to interface with the data models exposed by the REST API, we need to d
 
 ### Service
 
-Next, we need to create an [Angular Service](https://angular.dev/guide/di/creating-injectable-service) that allows us to interface with the REST API.
+Next, we need to create an [Angular Service](https://angular.dev/guide/di/creating-injectable-service) that allows us to interface with the REST API. This is done with the `@Injectable` [decorator](https://www.typescriptlang.org/docs/handbook/decorators.html) above the class definition.
 
 For each public endpoint on [`ThingController`](./overview/node/Overview.Api/Controllers/ThingController.cs), we will define a function within the service that handles calling the corresponding endpoint.
 
@@ -1076,10 +1072,10 @@ For each public endpoint on [`ThingController`](./overview/node/Overview.Api/Con
 
     ```ts
     import { HttpClient } from '@angular/common/http';
-    import { Injectable, Signal } from '@angular/core';
-    import { toSignal } from '@angular/core/rxjs-interop';
-    import { Thing } from '../models';
+    import { Injectable } from '@angular/core';
+    import { firstValueFrom } from 'rxjs';
     import { environment } from '../../environments/environment';
+    import { Thing } from '../models';
 
     @Injectable({
         providedIn: 'root'
@@ -1091,24 +1087,24 @@ For each public endpoint on [`ThingController`](./overview/node/Overview.Api/Con
             private http: HttpClient
         ) { }
 
-        getThings(): Signal<Thing[] | undefined> {
-            return toSignal(
+        getThings(): Promise<Thing[]> {
+            return firstValueFrom(
                 this.http.get<Thing[]>(
                     `${this.api}getThings`
                 )
             );
         }
 
-        getThing(id: number): Signal<Thing | undefined> {
-            return toSignal(
+        getThing(id: number): Promise<Thing> {
+            return firstValueFrom(
                 this.http.get<Thing>(
                     `${this.api}getThing/${id}`
                 )
             );
         }
 
-        validateName(thing: Thing): Signal<boolean | undefined> {
-            return toSignal(
+        validateName(thing: Thing): Promise<boolean> {
+            return firstValueFrom(
                 this.http.post<boolean>(
                     `${this.api}validateName`,
                     thing
@@ -1116,8 +1112,8 @@ For each public endpoint on [`ThingController`](./overview/node/Overview.Api/Con
             );
         }
 
-        validate(thing: Thing): Signal<boolean | undefined> {
-            return toSignal(
+        validate(thing: Thing): Promise<boolean> {
+            return firstValueFrom(
                 this.http.post<boolean>(
                     `${this.api}validate`,
                     thing
@@ -1125,8 +1121,8 @@ For each public endpoint on [`ThingController`](./overview/node/Overview.Api/Con
             );
         }
 
-        save(thing: Thing): Signal<Thing | undefined> {
-            return toSignal(
+        save(thing: Thing): Promise<Thing> {
+            return firstValueFrom(
                 this.http.post<Thing>(
                     `${this.api}save`,
                     thing
@@ -1134,8 +1130,8 @@ For each public endpoint on [`ThingController`](./overview/node/Overview.Api/Con
             );
         }
 
-        remove(thing: Thing): Signal<number | undefined> {
-            return toSignal(
+        remove(thing: Thing): Promise<number> {
+            return firstValueFrom(
                 this.http.delete<number>(
                     `${this.api}remove`,
                     { body: thing }
@@ -1153,11 +1149,127 @@ For each public endpoint on [`ThingController`](./overview/node/Overview.Api/Con
 
 In `ThingService`, an `api` variable is created that extracts the root server URL from the [*environment.ts*](./overview/app/src/environments/environment.ts) file. Additionally, the [HttpClient](https://angular.dev/guide/http/making-requests#best-practices) service is injected into the constructor.
 
-Each function signature matches the signature of its corresponding endpoint on the API controller. It executes an HTTP request to the endpoint, passing in any parameters or body data as required, and converts the resulting [Observable](https://rxjs.dev/guide/observable) into a [Signal](https://angular.dev/guide/signals).
+Each function signature matches the signature of its corresponding endpoint on the API controller. It executes an HTTP request to the endpoint, passing in any parameters or body data as required, and converts the resulting [Observable](https://rxjs.dev/guide/observable) into a [Promise](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Promise) via the [`firstValueFrom`](https://rxjs.dev/api/index/function/firstValueFrom) function.
 
 ### Route
 
 Now that we have a data model and a service, we can setup our [`HomeRoute`](./overview/app/src/app/routes/home.route.ts) to retrieve and render our `Thing` data.
+
+#### Route Logic
+
+To start, we need to configure [*home.route.ts*](./overview/app/src/app/routes/home.route.ts) with the infrastructure it will need to retrieve and track `Thing` data:
+
+```ts
+import {
+    Component,
+    OnInit
+} from '@angular/core';
+
+import { ThingService } from '../services';
+import { Thing } from '../models';
+
+@Component({
+    selector: 'home-route',
+    standalone: true,
+    templateUrl: 'home.route.html',
+    styleUrl: 'home.route.scss',
+    providers: [
+        ThingService
+    ]
+})
+export class HomeRoute implements OnInit {
+    things: Thing[] = [];
+
+    constructor(
+        private thingSvc: ThingService
+    ) { }
+
+    async ngOnInit(): Promise<void> {
+        this.things = await this.thingSvc.getThings();
+    }
+}
+```
+
+Lets unpack what is happening here. First, we imported the `OnInit` [Lifecycle Hook](https://angular.dev/guide/components/lifecycle), as well as `ThingService` and `Thing`. We added `ThingService` to the Component's [providers](https://angular.dev/guide/di/dependency-injection-providers) array, registering it with the component [dependency injection](https://angular.dev/guide/di/dependency-injection) container.
+
+Then, we created a public `Thing[]` array named `things` and initialized it as an empty array, `[]`. An instance of `ThingService` is then injected in the constructor as the private property `thingSvc`. Finally, in the `ngOnInit` lifecycle hook, we initialize the value of `things` using the `ThingService.getThings()` function.
+
+#### Route Template
+
+Now that the route logic has been defined, we need to define the structure of the route through its template, [*home.route.html*](./overview/app/src/app/routes/home.route.html):
+
+```html
+<h1 class="m8 mat-title">Home</h1>
+@if (things.length > 0) {
+    @for (thing of things; track thing.id) {
+        <h3 class="m8 mat-h3 color-primary">{{thing.name}}</h3>
+    }
+} @else {
+    <h3 class="m8 mat-h3 color-warn">No Things Available</h3>
+}
+```
+
+Here, we use [Control Flow](https://angular.dev/guide/templates/control-flow) syntax to determine if we have any `Thing` data available. If so, iterate through all of them and render the name using [Text Interpolation](https://angular.dev/guide/templates/interpolation). Otherwise, render a message indicating *"No Things Available"*.
+
+Run the API and the App simultaneously as follows:
+
+1. Open the terminal in VS Code with <kbd>CTRL + `</kdb>.
+2. Open a split terminal by ensuring focus is in the terminal panel and using the <kbd>CTRL + SHIFT + 5</kbd> shortcut.
+    * The shortcut for opening a new terminal altogether is <kbd>CTRL + SHIFT + `</kbd>.
+3. In the left terminal, execute the following:
+    ```bash
+    cd <path-to-overview>/node/Overview.Api
+    dotnet run
+    ```
+4. In the right terminal, execute the following:
+    ```bash
+    cd <path-to-overview>/app
+    npm run start
+    ```
+
+Open your browser and navigate to http://localhost:3000. You will see the home screen along with the message *No Things Available*.
+
+If you've been following along from the beginning, you'll remember that we added a `Thing` when testing out the API Swagger interface. That means that we should be seeing the name of at least one `Thing` object.
+
+If you press the <kbd>F12</kbd> key in the browser, you will see that the API is blocking requests from our app because it has not been configured to accept cross-origin requests (see [CORS](https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS)). Let us fix that now.
+
+![spa-pre-cors](./assets/spa-pre-cors.png)
+
+#### Enable CORS on the API Server
+
+In this scenario, we are going to configure the API to create a CORS setup that allows requests from any origin.
+
+In the *overview/node/Overview.Api* directory, open *Program.cs* and adjust it as follows:
+
+```cs
+// just below builder.Services.AddDbContext<AppDbContext>(...)
+
+builder
+    .Services
+    .AddCors(o => o.AddDefaultPolicy(builder =>
+    {
+        builder
+            .AllowAnyOrigin()
+            .AllowAnyMethod()
+            .AllowAnyHeader();
+    }));
+
+// just above builder.Services.AddScoped<ThingService>();
+
+// just below app.UseSwaggerUI();
+app.UseCors();
+// just above app.UseRouting();
+```
+
+Stop the node in the left terminal window with <kbd>CTRL + C</kbd> and re-start it with `dotnet run`.
+
+If you refresh the Angular app, you should see the name *Awesome Thing* rendered and all console errors cleared:
+
+![spa-post-cors](./assets/spa-post-cors.png)
+
+For details on configuring CORS in ASP.NET Core, see [Enable Cross-Origin Requests (CORS) in ASP.NET Core](https://learn.microsoft.com/en-us/aspnet/core/security/cors?view=aspnetcore-8.0).
+
+For an example of a more restrictive CORS setup, see [`ConfigureDefaultCors`](https://github.com/JaimeStill/distributed-design/blob/main/nodes/core/Extensions/ServiceExtensions.cs#L51) along with an [`appsettings.CorsOrigin`](https://github.com/JaimeStill/distributed-design/blob/main/nodes/workflows/Workflows.Api/appsettings.Development.json#L21) configuration.
 
 ### Components
 

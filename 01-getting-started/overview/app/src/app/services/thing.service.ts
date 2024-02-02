@@ -1,8 +1,8 @@
 import { HttpClient } from '@angular/common/http';
-import { Injectable, Signal } from '@angular/core';
-import { toSignal } from '@angular/core/rxjs-interop';
-import { Thing } from '../models';
+import { Injectable } from '@angular/core';
+import { firstValueFrom } from 'rxjs';
 import { environment } from '../../environments/environment';
+import { Thing } from '../models';
 
 @Injectable({
     providedIn: 'root'
@@ -14,24 +14,24 @@ export class ThingService {
         private http: HttpClient
     ) { }
 
-    getThings(): Signal<Thing[] | undefined> {
-        return toSignal(
+    getThings(): Promise<Thing[]> {
+        return firstValueFrom(
             this.http.get<Thing[]>(
                 `${this.api}getThings`
             )
         );
     }
 
-    getThing(id: number): Signal<Thing | undefined> {
-        return toSignal(
+    getThing(id: number): Promise<Thing> {
+        return firstValueFrom(
             this.http.get<Thing>(
                 `${this.api}getThing/${id}`
             )
         );
     }
 
-    validateName(thing: Thing): Signal<boolean | undefined> {
-        return toSignal(
+    validateName(thing: Thing): Promise<boolean> {
+        return firstValueFrom(
             this.http.post<boolean>(
                 `${this.api}validateName`,
                 thing
@@ -39,8 +39,8 @@ export class ThingService {
         );
     }
 
-    validate(thing: Thing): Signal<boolean | undefined> {
-        return toSignal(
+    validate(thing: Thing): Promise<boolean> {
+        return firstValueFrom(
             this.http.post<boolean>(
                 `${this.api}validate`,
                 thing
@@ -48,8 +48,8 @@ export class ThingService {
         );
     }
 
-    save(thing: Thing): Signal<Thing | undefined> {
-        return toSignal(
+    save(thing: Thing): Promise<Thing> {
+        return firstValueFrom(
             this.http.post<Thing>(
                 `${this.api}save`,
                 thing
@@ -57,8 +57,8 @@ export class ThingService {
         );
     }
 
-    remove(thing: Thing): Signal<number | undefined> {
-        return toSignal(
+    remove(thing: Thing): Promise<number> {
+        return firstValueFrom(
             this.http.delete<number>(
                 `${this.api}remove`,
                 { body: thing }

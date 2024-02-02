@@ -34,6 +34,16 @@ builder
 
 builder
     .Services
+    .AddCors(o => o.AddDefaultPolicy(builder =>
+    {
+        builder
+            .AllowAnyOrigin()
+            .AllowAnyMethod()
+            .AllowAnyHeader();
+    }));
+
+builder
+    .Services
     .AddScoped<ThingService>();
 
 builder.Services.AddEndpointsApiExplorer();
@@ -43,6 +53,7 @@ var app = builder.Build();
 
 app.UseSwagger();
 app.UseSwaggerUI();
+app.UseCors();
 app.UseRouting();
 app.MapControllers();
 
