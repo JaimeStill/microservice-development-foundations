@@ -30,7 +30,7 @@ export class ThingService {
         );
     }
 
-    validateName(thing: Thing): Promise<boolean> {
+    validateName = (thing: Thing): Promise<boolean> => {
         return firstValueFrom(
             this.http.post<boolean>(
                 `${this.api}validateName`,
@@ -57,11 +57,10 @@ export class ThingService {
         );
     }
 
-    remove(thing: Thing): Promise<number> {
+    remove(id: number): Promise<number> {
         return firstValueFrom(
             this.http.delete<number>(
-                `${this.api}remove`,
-                { body: thing }
+                `${this.api}remove/${id}`
             )
         );
     }

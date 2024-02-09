@@ -1,0 +1,25 @@
+@if (form) {
+    <form [formGroup]="form">
+        <div flexContainer
+            flexDirection="column"
+            flexMain="start"
+            flexCross="stretch"
+            flexGap="4px">
+            <mat-form-field>
+                <mat-label>Name</mat-label>
+                <input matInput
+                    formControlName="name">
+                <mat-error *ngIf="name?.errors?.['required']">Name is required</mat-error>
+                <mat-error *ngIf="name?.errors?.['api']">Name {{name?.value}} is already in use.</mat-error>
+            </mat-form-field>
+            <mat-form-field>
+                <mat-label>Description</mat-label>
+                <textarea matInput
+                        formControlName="description"
+                        cdkTextareaAutosize
+                        [cdkAutosizeMinRows]="4"
+                        [cdkAutosizeMaxRows]="8"></textarea>
+            </mat-form-field>
+        </div>
+    </form>
+}

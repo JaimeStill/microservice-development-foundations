@@ -158,7 +158,7 @@ For each public endpoint on [`ThingController`](./overview/node/Overview.Api/Con
             );
         }
 
-        validateName(thing: Thing): Promise<boolean> {
+        validateName = (thing: Thing): Promise<boolean> => {
             return firstValueFrom(
                 this.http.post<boolean>(
                     `${this.api}validateName`,
@@ -185,11 +185,10 @@ For each public endpoint on [`ThingController`](./overview/node/Overview.Api/Con
             );
         }
 
-        remove(thing: Thing): Promise<number> {
+        remove(id: number): Promise<number> {
             return firstValueFrom(
                 this.http.delete<number>(
-                    `${this.api}remove`,
-                    { body: thing }
+                    `${this.api}remove/${id}`
                 )
             );
         }
@@ -205,6 +204,8 @@ For each public endpoint on [`ThingController`](./overview/node/Overview.Api/Con
 In `ThingService`, an `api` variable is created that extracts the root server URL from the [*environment.ts*](./overview/app/src/environments/environment.ts) file. Additionally, the [HttpClient](https://angular.dev/guide/http/making-requests#best-practices) service is injected into the constructor.
 
 Each function signature matches the signature of its corresponding endpoint on the API controller. It executes an HTTP request to the endpoint, passing in any parameters or body data as required, and converts the resulting [Observable](https://rxjs.dev/guide/observable) into a [Promise](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Promise) via the [`firstValueFrom`](https://rxjs.dev/api/index/function/firstValueFrom) function.
+
+It's important to note that property validation functions need to be defined as *arrow functions*. This way, when they are registered for validation with the [`ApiValidator`](#asynchronous-validation) service, the bound value of `this` appropriately references the service instance that defines the validation function rather than the `ApiValidator` service instance. For more details, see [this](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Operators/this).
 
 ## Route
 
@@ -630,38 +631,20 @@ export * from './thing-card.component';
 
 Now that the component is defined, we can use it inside of the `ThingListComponent`. First, let us import both `ThingCardComponent` and `FlexModule` in *thing-list.component.ts* to enable us to properly structure rendering a collection of `Thing` objects:
 
-```ts
-import {
-    Component,
-    OnInit
-} from '@angular/core';
+**thing-list.component.ts**
 
+> Unnecessary code is left out for brevity
+
+```ts
 import { ThingCardComponent } from './thing-card.component';
 import { FlexModule } from '../flex';
-import { ThingService } from '../services';
-import { Thing } from '../models';
 
 @Component({
-    standalone: true,
-    selector: 'thing-list',
-    templateUrl: 'thing-list.component.html',
-    providers: [ ThingService ],
     imports: [
         FlexModule,
         ThingCardComponent
     ]
 })
-export class ThingListComponent implements OnInit {
-    things: Thing[] | null = null;
-
-    constructor(
-        private thingSvc: ThingService
-    ) { }
-
-    async ngOnInit(): Promise<void> {
-        this.things = await this.thingSvc.getThings();
-    }
-}
 ```
 
 We can now adjust the template to use the `<thing-card>` component instead of just rendering the name directly:
@@ -681,18 +664,29 @@ We can now adjust the template to use the `<thing-card>` component instead of ju
 }
 ```
 
-The next thing we need to do is handle the `edit` and `remove` events. For now, we will simply log the received event objects to the console. We will properly wire these events to enable editing and removal in the [Finalizing the App](#finalizing-the-app) section at the end.
+The next thing we need to do is handle the `edit` and `remove` events. For now, we will simply show a snacker message indicating the triggered action. We will properly wire these events to enable editing and removal in the [Finalizing the App](#finalizing-the-app) section at the end.
 
-First, add the following `edit` and `remove` functions to *thing-list.component.ts*:
+First, import and register `SnackerService` and add the following `edit` and `remove` functions:
+
+**thing-list.component.ts**
+
+> Unnecessary code is left out for brevity
 
 ```ts
-// just below ngOnInit
-edit (thing: Thing) {
-    console.log('Edit Thing', thing);
-}
+import { SnackerService } from '../core';
+@Component({
+    providers: [
+        SnackerService
+    ]
+})
+export class ThingListComponent implements OnInit {
+    edit(thing: Thing) {
+        this.snacker.sendSuccessMessage(`Editing thing ${thing.name}`);
+    }
 
-remove(thing: Thing) {
-    console.log('Remove Thing', thing);
+    remove(thing: Thing) {
+        this.snacker.sendWarningMessage(`Removing thing ${thing.name}`);
+    }
 }
 ```
 
@@ -756,34 +750,702 @@ The [`FormBuilder`](https://angular.dev/guide/forms/reactive-forms#inject-the-fo
 The `name` property is a little different from the other properties; it specifies two different features:
 * If `thing.name` does not have a value, it defaults to the empty string, `''`. Additionally, a [`Validator`](https://angular.dev/guide/forms/form-validation#built-in-validator-functions) is associated with the form control indicating that `name` is a required form field. If no value is present on the form control, the overall form state will be marked invalid.
 
-### Extended Form Infrastructure
-
-There are two capabilities that I typically define to enhance the form experience:
-
-* The ability to execute asynchronous validation calls on specific properties on the server, i.e. - verifying that a specified `name` is unique.
-
-* The ability to cache the state of the form in browser storage as it is being filled out. This way, if you leave the form and come back to it, you still have your filled in data until you either save or clear the cache.
-
-#### API Validator
+### Asynchronous Validation
 
 The built-in support for [asynchronous validation](https://angular.dev/guide/forms/form-validation#creating-asynchronous-validators) is limiting in that it is tied to the form control element that the validation is being executed against. This means that your custom validator will only have access to the value of the property being validated, not the state of the overall object represented by the form.
 
 If you'll recall, our [`ThingService.validateName`](./overview/app/src/app/services/thing.service.ts#L33) function requires you to post the full `Thing` object to the API to validate its name so it can also check the `id` of the object being compared.
 
-#### Storage Form
+To facilitate this, we can create an `ApiValidator` service that receives:
+* An asynchronous validator function
+* The `FormGroup` corresponding to the current object state
+* The `AbstractControl` representing the validation property
+* An optional string used to identify the error in the `control.errors` store.
+
+This service will allow you to:
+* listen for changes on the validated control
+* execute the validator with the state of the overall object when the control value changes
+* adjust the error state of the underlying control given the result of the asynchronous validation call
+
+> Don't be too concerned with the full implementation details of the following service. The most important thing is that you understand what it is doing and how to use it in your forms.
+
+In *overview/app/src/app/core/services*, create a file named *api-validator.service.ts* with the following contents:
+
+```ts
+import {
+    AbstractControl,
+    FormGroup
+} from '@angular/forms';
+
+import {
+    debounceTime,
+    distinctUntilChanged
+} from 'rxjs/operators';
+
+import { Injectable } from '@angular/core';
+import { Subscription } from 'rxjs';
+
+@Injectable({
+    providedIn: 'root'
+})
+export class ApiValidator {
+    private setErrorState = (control: AbstractControl, error: string, value?: boolean | null) => {
+        if (value) {
+            const errors = control.errors
+                ? {
+                    ...control.errors,
+                    [error]: value
+                }
+                : {
+                    [error]: value
+                };
+
+            control.setErrors(errors);
+        } else if (control.errors) {
+            if (control.errors.hasOwnProperty(error))
+                delete control.errors[error];
+
+            if (Object.keys(control.errors).length > 0)
+                control.setErrors(control.errors);
+            else
+                control.setErrors(null);
+        }
+    }
+
+    registerValidator = async<T>(
+        validator: (obj: T) => Promise<boolean>,
+        form: FormGroup,
+        control: AbstractControl,
+        error: string = 'api'
+    ): Promise<Subscription> => {
+        if (control.value) {
+            const res = await validator(form.value);
+            this.setErrorState(control, error, res ? null : true);
+        }
+
+        return control
+            .valueChanges
+            .pipe(
+                debounceTime(350),
+                distinctUntilChanged()
+            )
+            .subscribe(async (value: string) => {
+                if (value) {
+                    const res = await validator(form.value);
+                    this.setErrorState(control, error, res ? null : true);
+                } else
+                    this.setErrorState(control, error);
+            });
+    }
+}
+```
+
+Update the contents of *overview/app/src/app/core/services/index.ts* to export the `ApiValidator` service:
+
+```ts
+export * from './api-validator.service';
+export * from './snacker.service';
+export * from './theme.service';
+```
 
 ### Form Component
 
-Now that we can generate a `FormGroup` for our data model, we need to define the UI component that encapsulates a root `<form>` element and exposes form controls.
+Now that we can generate a `FormGroup` for our data model and asynchronously validate properties based on the state of the underlying object, we need to define the UI component that encapsulates a root `<form>` element and exposes form controls.
 
-1. In the *overview/app/src/app* directory, create a directory named *forms*.
+In the *overview/app/src/app* directory, create a directory named *forms*.
 
-2. Create the following files in the *forms* directory:
+Create the following files in the *forms* directory:
+* *index.ts*
+* *thing.form.ts*
+* *thing.form.html*
 
-    * *thing.form.ts*
-    * *thing.form.html*
-    * *index.ts*
+The `ThingForm` component will be responsible for several things:  
+* Receiving an `Input` property `thing: Thing` that is modified through the underlying form.
+* Defining an output event, `saved`, that lets the consumer know when the underlying `Thing` object has been successfully saved.
+* Registering the `ApiValidator`, `FormBuilder`, and `ThingService` providers and receiving instances through constructor injection.
+* Implementing the `OnChanges` lifecycle hook and detecting when the `thing` input property changes, including the first time it is initialized. When detected, initialize the `FormGroup` and register a validator for the `ThingService.validateName` call.
+* Providing a `save` function that passes the current state of the form to `ThingService.save` and emits `saved` if the call is successful.
+
+**thing.form.ts**  
+
+```ts
+import {
+    Component,
+    EventEmitter,
+    Input,
+    OnChanges,
+    Output,
+    SimpleChanges
+} from '@angular/core';
+
+import {
+    FormBuilder,
+    FormGroup,
+    ReactiveFormsModule
+} from '@angular/forms';
+
+import {
+    GenerateThingForm,
+    Thing
+} from '../models';
+
+import { CommonModule } from '@angular/common';
+import { TextFieldModule } from '@angular/cdk/text-field';
+import { MatFormFieldModule } from '@angular/material/form-field';
+import { MatInputModule } from '@angular/material/input';
+import { ApiValidator } from '../core';
+import { FlexModule } from '../flex';
+import { ThingService } from '../services';
+
+@Component({
+    selector: 'thing-form',
+    standalone: true,
+    templateUrl: 'thing.form.html',
+    imports: [
+        CommonModule,
+        FlexModule,
+        MatFormFieldModule,
+        MatInputModule,
+        ReactiveFormsModule,
+        TextFieldModule
+    ],
+    providers: [
+        ApiValidator,
+        FormBuilder,
+        ThingService
+    ]
+})
+export class ThingForm implements OnChanges {
+    form!: FormGroup;
+    get name() { return this.form.get('name') }
+
+    @Input({ required: true }) thing!: Thing;
+    @Output() saved = new EventEmitter<Thing>();
+
+    constructor(
+        private fb: FormBuilder,
+        private thingSvc: ThingService,
+        private validator: ApiValidator,
+    ) { }
+
+    ngOnChanges(changes: SimpleChanges): void {
+        if (changes['thing']) {
+            this.form = GenerateThingForm(this.thing, this.fb);
+
+            this.validator.registerValidator(
+                this.thingSvc.validateName,
+                this.form,
+                this.name!
+            );
+        }
+    }
+
+    async save(): Promise<void> {
+        if (this.form.valid) {
+            const res = await this.thingSvc.save(this.form.value);
+
+            if (res)
+                this.saved.emit(res);
+        }
+    }
+}
+```
+
+In the *index.ts* file, export the `ThingForm` component:
+
+```ts
+export * from './thing.form';
+```
+
+Create the interface template for `ThingForm`.
+
+**thing.form.html**
+
+```html
+@if (form) {
+    <form [formGroup]="form">
+        <div flexContainer
+            flexDirection="column"
+            flexMain="start"
+            flexCross="stretch"
+            flexGap="4px">
+            <mat-form-field>
+                <mat-label>Name</mat-label>
+                <input matInput
+                    formControlName="name">
+                <mat-error *ngIf="name?.errors?.['required']">Name is required</mat-error>
+                <mat-error *ngIf="name?.errors?.['api']">Name {{name?.value}} is already in use.</mat-error>
+            </mat-form-field>
+            <mat-form-field>
+                <mat-label>Description</mat-label>
+                <textarea matInput
+                        formControlName="description"
+                        cdkTextareaAutosize
+                        [cdkAutosizeMinRows]="4"
+                        [cdkAutosizeMaxRows]="8"></textarea>
+            </mat-form-field>
+        </div>
+    </form>
+}
+```
+
+In the first `<mat-form-field>` that corresponds to the `name` property, notice the two `<mat-error>` elements. These elements correspond to the two possible failed validation conditions:
+
+* The `name` property does not have a value
+* The asynchronous validation of `ThingService.validateName` returns false for the current value of `name`.
 
 ## Dialogs
 
+Now that we have the `ThingForm` component, we need a clean way of presenting the form. This can be done by wrapping the form inside of a [Dialog](https://material.angular.io/components/dialog/overview). Dialogs are modular interface elements that render overlaid on top of the current UI.
+
+To start, in the *overview/app/src/app* directory, create a folder named *dialogs* with the following contents:
+
+* *index.ts*
+* *thing.dialog.ts*
+* *thing.dialog.html*
+
+**thing.dialog.ts**
+
+```ts
+import {
+    Component,
+    Inject,
+    OnInit
+} from '@angular/core';
+
+import {
+    MatDialogModule,
+    MatDialogRef,
+    MAT_DIALOG_DATA
+} from '@angular/material/dialog';
+
+import { ThingForm } from '../forms';
+import { Thing } from '../models';
+import { MatButtonModule } from '@angular/material/button';
+
+@Component({
+    selector: 'thing-dialog',
+    standalone: true,
+    templateUrl: 'thing.dialog.html',
+    imports: [
+        MatButtonModule,
+        MatDialogModule,
+        ThingForm
+    ]
+})
+export class ThingDialog implements OnInit {
+    constructor(
+        private dialog: MatDialogRef<ThingDialog>,
+        @Inject(MAT_DIALOG_DATA) public thing: Thing
+    ) { }
+
+    ngOnInit(): void {
+        if (!this.thing)
+            this.dialog.close();
+    }
+
+    saved = (thing: Thing) => this.dialog.close(thing);
+}
+```
+
+In *thing.dialog.ts*, all we need to do is:
+* Register a `MatDialogRef` service that represents the current dialog, as well as an an injected `Thing`, retrieved through the `MAT_DIALOG_DATA` injection token.
+    * The `MAT_DIALOG_DATA` token provides a way for the dialog to extract the value of the object specified by `MatDialogOptions.data` by the caller who opened the dialog.
+* Implement the `OnInit` lifecycle hook to ensure that a `Thing` instance was passed to the dialog.
+* Define a `saved` function that is called whenever the `ThingForm` component emits its `saved` event. The function closes the dialog, returning the saved `thing` instance to the consuming component.
+
+Export the `ThingDialog` in *index.ts*:
+
+```ts
+export * from './thing.dialog';
+```
+
+**thing.dialog.html**
+
+```html
+<div class="mat-typography">
+    <h2 mat-dialog-title>
+        @if (thing.id > 0) {
+            <span>Update Thing</span>
+        } @else {
+            <span>Add Thing</span>
+        }
+    </h2>
+    <mat-dialog-content>
+        <thing-form #editor
+                    [thing]="thing"
+                    (saved)="saved($event)"></thing-form>
+    </mat-dialog-content>
+    <mat-dialog-actions>
+        <button mat-button
+                color="primary"
+                [disabled]="editor.form.invalid"
+                (click)="editor.save()">
+            Save Thing
+        </button>
+        <button mat-button
+                color="warn"
+                mat-dialog-close>
+            Cancel
+        </button>
+    </mat-dialog-actions>
+</div>
+```
+
+Because `ThingDialog` can be used to add or update a `Thing` object, the title is set based on the value of the `id` property.
+
+Additionally, the `<thing-form>` element specifies a [Template Reference Variable](https://angular.dev/guide/templates/reference-variables), `#editor`, which allows other elements in the template to access the underlying `ThingForm` object. It also passes the `thing` instance provided to the dialog to the form and registers the `saved` event with its `saved` function.
+
+The `editor` reference variable is used to set the `[disabled]` state of the **Save** button based on the validity of its internal form. When the **Save** button is clicked, the `ThingForm.save()` function is executed through the `editor` reference variable.
+
+When the **Cancel** button is clicked, the dialog simply closes and nothing is returned to the calling component. The `mat-dialog-close` directive is what facilitates closing the dialog.
+
+### Confirm Dialog
+
+There is one additional dialog that needs to be created before we finish up the app. A `ConfirmDialog` that is used to prompt the user to confirm whether they truly want to execute a particular action. We will be using this dialog to prompt for confirmation when removing a `Thing`.
+
+The dialog will receive an object with the following signature:
+
+```js
+{
+    title: string,
+    content: string
+}
+```
+
+It will define two actions:
+
+* Confirm, which closes the dialog and returns `true` to the calling component.
+* Cancel, which closes the dialog and returns `false` to the calling component.
+
+In the *overview/app/src/app/core* directory, create a *dialogs* folder with the following files:
+
+* *index.ts*
+* *confirm.dialog.ts*
+* *confirm.dialog.html*
+
+Update the *overview/app/src/app/core/index.ts* file to export all of the contents of the *dialog* folder:
+
+```ts
+export * from './dialogs';
+export * from './services';
+```
+
+> Ignore the warning for now. It will clear whenever the `ConfirmDialog` is exported from *index.ts* inside of the *dialogs* directory.
+
+**confirm.dialog.ts**
+
+```ts
+import {
+    Component,
+    OnInit,
+    Inject
+} from '@angular/core';
+
+import {
+    MAT_DIALOG_DATA,
+    MatDialogModule
+} from '@angular/material/dialog';
+
+import { MatButtonModule } from '@angular/material/button';
+
+@Component({
+    selector: 'confirm-dialog',
+    standalone: true,
+    templateUrl: 'confirm.dialog.html',
+    imports: [
+        MatButtonModule,
+        MatDialogModule
+    ]
+})
+export class ConfirmDialog implements OnInit {
+    constructor(
+        @Inject(MAT_DIALOG_DATA) public data: { title: string, content: string }
+    ) { }
+
+    ngOnInit() {
+        if (this.data) {
+            this.data.title = this.data.title
+                ? this.data.title
+                : 'Confirm Action?';
+
+            this.data.content = this.data.content
+                ? this.data.content
+                : 'Are you sure you would like to perform this action?';
+        } else {
+            this.data = {
+                title: 'Confirm Action?',
+                content: 'Are you sure you would like to perform this action?'
+            };
+        }
+    }
+}
+```
+
+Export `ConfirmDialog` in *index.ts*:
+
+```ts
+export * from './confirm.dialog';
+```
+
+**confirm.dialog.html**
+
+```html
+<div class="mat-typography">
+    <h2 mat-dialog-title>{{data.title}}</h2>
+    <mat-dialog-content>
+        <p>{{data.content}}</p>
+    </mat-dialog-content>
+    <mat-dialog-actions>
+        <button mat-button
+                [mat-dialog-close]="false">Cancel</button>
+        <button mat-button
+                color="warn"
+                [mat-dialog-close]="true">Confirm</button>
+    </mat-dialog-actions>
+</div>
+```
+
 ## Finalizing the App
+
+Now we have everything we need to wrap up the app.
+
+* We can add and edit `Thing` instances using the `ThingDialog`, which encapsulates the `ThingForm` component.
+
+* We can prompt for confirmation using `ConfirmDialog` before executing sensitive actions such as deleting `Thing` records.
+
+The following sections will walk you through the final steps needed to enable this functionality.
+
+### Adding a Thing
+
+To make it easier to expose an **Add Thing** button in our app, let us adjust the `HomeRoute` component, defined in *overview/app/src/app/routes*, by removing the heading from the *home.route.html* template.
+
+**home.route.html**
+
+```html
+<thing-list></thing-list>
+```
+
+We will prepare `ThingListComponent` by importing the `MatButtonModule` and adding a placeholder `add()` function:
+
+**thing-list.component.ts**
+
+> Unnecessary code is left out for brevity
+
+```ts
+import { MatButtonModule } from '@angular/material/button';
+
+@Component({
+    imports: [
+        MatButtonModule
+    ]
+})
+export class ThingListComponent implements OnInit {
+    add() {
+        this.snacker.sendSuccessMessage(`Adding thing...`);
+    }
+}
+```
+
+In the `ThingListComponent` template, we will create a flex row container that contains the heading and the **Add Thing** button with spacing between the two elements:
+
+**thing-list.component.html**
+
+```html
+<!-- place at the top -->
+<div flexContainer
+     flexMain="space-between"
+     flexCross="center"
+     class="p4">
+    <h1 class="m4 mat-title">Things</h1>
+    <button mat-button
+            color="primary"
+            class="m4"
+            (click)="add()">
+        Add Thing
+    </button>
+</div>
+<!-- remainder of template -->
+```
+
+In order to simplify refreshing our `things` array whenever the underlying `Thing` SQL table is modified, we will create a `refresh()` function to encapsulate the functionality defined in `ngOnInit`:
+
+**thing-list.component.ts**
+
+> Unnecessary code is left out for brevity
+
+```ts
+private async refresh() {
+    this.things = await this.thingSvc.getThings();
+}
+
+async ngOnInit(): Promise<void> {
+    await this.refresh();
+}
+```
+
+
+Next, we need to import the `MatDialogModule` as well as our `ThingDialog` component and restructure the `add` function to facilitate adding a `Thing` object using our `ThingForm`.
+
+**thing-list.component.ts**
+
+> Unnecessary code is left out for brevity
+
+```ts
+import {
+    MatDialog,
+    MatDialogModule
+} from '@angular/material/dialog';
+
+import { ThingDialog } from '../dialogs';
+
+@Component({
+    imports: [
+        MatDialogModule
+    ]
+})
+export class ThingListComponent implements OnInit {
+    constructor(
+        private dialog: MatDialog
+    ) { }
+
+    add() {
+        this.dialog.open(ThingDialog, {
+            disableClose: true,
+            data: <Thing>{
+                id: 0,
+                name: '',
+                description: ''
+            },
+            width: '90%',
+            maxWidth: '600px'
+        })
+        .afterClosed()
+        .subscribe(async (result: Thing | null) => {
+            if (result) {
+                this.snacker.sendSuccessMessage(`Thing ${result.name} successfully added`);
+                this.refresh();
+            }
+        });
+    }
+}
+```
+
+If we the app now and click **Add Thing**, we will see that our dialog properly renders our form:
+
+![add-thing-dialog](./assets/add-thing-dialog.png)
+
+If we tab away from the **Name** input, we will see the validation error indicating the *Name is required*:
+
+![name-required-validation](./assets/name-required-validation.png)
+
+If we focus back on the **Name** input and set the value to *Awesome Thing*, we will see that our asynchronous validation is correctly working and providing us the error *Name Awesome Thing is already in use.*:
+
+![duplicate-name-validation](./assets/duplicate-name-validation.png)
+
+If we provide the form with valid values, the form validation will enable the **Save Thing** button:
+
+![valid-thing-form](./assets/valid-thing-form.png)
+
+Clicking **Save Thing** will cause our `Thing` to be saved and the `ThingListComponent` will refresh with the new object:
+
+![add-new-thing](./assets/add-new-thing.png)
+
+### Editing a Thing
+
+To support editing, all we need to do is replace the body of the `edit` function to pass the provided `thing` instance to the `ThingDialog`. Most of the details of opening and reacting to the result of a `ThingDialog` are common between the `add` and `edit` functions, so we can encapsulate the functionality in a private function and just pass the proper `data` object to the private function:
+
+**thing-list.component.ts**
+
+> Unnecessary code is left out for brevity
+
+```ts
+private openThingDialog(thing: Thing) {
+    this.dialog.open(ThingDialog, {
+        disableClose: true,
+        data: thing,
+        width: '90%',
+        maxWidth: '600px'
+    })
+    .afterClosed()
+    .subscribe(async (result: Thing | null) => {
+        if (result) {
+            this.snacker.sendSuccessMessage(`Thing ${result.name} successfully saved`);
+            this.refresh();
+        }
+    });
+}
+
+add() {
+    this.openThingDialog(<Thing>{
+        id: 0,
+        name: '',
+        description: ''
+    });
+}
+
+edit(thing: Thing) {
+    this.openThingDialog(thing);
+}
+```
+
+If we click the **Edit** button on *Another Thing*, we can see that our dialog and form are functioning properly:
+
+![edit-thing](./assets/edit-thing.png)
+
+If we change the *Name* to *Modified Thing* and click **Save Thing**, the corresponding `Thing` database record is properly updated:
+
+![modified-thing](./assets/modified-thing.png)
+
+### Removing a Thing
+
+The last thing we need to do is support removing `Thing` records. First, we need to import the `ConfirmDialog`:
+
+**thing-list.component.ts**
+
+> Unnecessary code is left out for brevity
+
+```ts
+import {
+    ConfirmDialog,
+    SnackerService
+}
+```
+
+Then we can modify the `remove` function to prompt the user to confirm before removing the `Thing`:
+
+**thing-list.component.ts**
+
+> Unnecessary code is left out for brevity
+
+```ts
+remove(thing: Thing) {
+    this.dialog.open(ConfirmDialog, {
+        disableClose: true,
+        autoFocus: false,
+        data: {
+            title: `Remove Thing`,
+            content: `Are you sure you want to remove Thing "${thing.name}"?`
+        }
+    })
+    .afterClosed()
+    .subscribe(async (result: boolean) => {
+        if (result) {
+            const res = await this.thingSvc.remove(thing.id);
+
+            if (res) {
+                this.snacker.sendSuccessMessage(`Thing ${thing.name} successfully removed`);
+                this.refresh();
+            }
+        }
+    });
+}
+```
+
+If we click **Remove** on our *Modified Thing*, we can see the `ConfirmDialog` prompt displayed:
+
+![confirm-remove](./assets/confirm-remove.png)
+
+If we click the **Confirm** button, the `Thing` record is deleted from the underlying SQL database and the list is refreshed:
+
+![remove-thing](./assets/remove-thing.png)
