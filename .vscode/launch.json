@@ -10,7 +10,7 @@
             "request": "launch",
             "preLaunchTask": "overview-build",
             "program": "bin/debug/net8.0/Overview.Api.dll",
-            "cwd": "${workspaceFolder}/01-getting-started/overview/node/Overview.Api",
+            "cwd": "${workspaceFolder}/01-overview/overview/node/Overview.Api",
             "stopAtEntry": false
         }
     ]

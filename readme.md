@@ -12,10 +12,10 @@ See [Tools](./tools.md) for a list of tools, images, and extensions that are nee
 
 ## Curriculum
 
-* [**10,000 ft. Overview**](./01-getting-started/) - Walk through a simple sample that provides a surface level illustration of the capabilities developed throughout the course.
-    * [Project Setup](./01-getting-started/project-setup.md) - Scaffold workshop project infrastructure.
-    * [Node Development](./01-getting-started/node-development.md) - Overview of Node development using a single, simple data model.
-    * [App Development](./01-getting-started/app-development.md) - Overview of App development using a single, simple data model.
+* [**10,000 ft. Overview**](./01-overview/) - Walk through a simple sample that provides a surface level illustration of the capabilities developed throughout the course.
+    * [Project Setup](./01-overview/project-setup.md) - Scaffold workshop project infrastructure.
+    * [Node Development](./01-overview/node-development.md) - Overview of Node development using a single, simple data model.
+    * [App Development](./01-overview/app-development.md) - Overview of App development using a single, simple data model.
 
 ### Node Development
 

@@ -822,7 +822,7 @@ info: Microsoft.Hosting.Lifetime[0]
 info: Microsoft.Hosting.Lifetime[0]
       Hosting environment: Development
 info: Microsoft.Hosting.Lifetime[0]
-      Content root path: G:\training\microservice-development-foundations\01-getting-started\overview\node\Overview.Api
+      Content root path: G:\training\microservice-development-foundations\01-overview\overview\node\Overview.Api
 ```
 
 Open the browser and navigate to http://localhost:5000/swagger. You should see the Swagger UI rendered with the full endpoint list for `ThingController` as below:

@@ -7,7 +7,7 @@
             "type": "shell",
             "problemMatcher": "$msCompile",
             "options": {
-                "cwd": "${workspaceFolder}/01-getting-started/overview/node"
+                "cwd": "${workspaceFolder}/01-overview/overview/node"
             }
         }
     ]
