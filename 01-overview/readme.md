@@ -5,5 +5,5 @@ The following workshop will focus on taking a very simple data model, and walkin
 This workshop is split into three different segments:
 
 * [**Project Setup**](./project-setup.md) - Focused on building out all of the infrastructure needed to follow along with building out a Node and an App.
-* [**Node Development**](./node-development) - Focused on building a Node through the development of a data model, data context, service, and API controller.
-* [**App Development**](./app-development) - Focused on building an Angular App.
+* [**Node Development**](./node-development.md) - Focused on building a Node through the development of a data model, data context, service, and API controller.
+* [**App Development**](./app-development.md) - Focused on building an Angular App.
