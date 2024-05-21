@@ -589,7 +589,7 @@ Now that we have the initial configuration in place, we need to register the ser
 
 * The [`ThingService`](./overview/node/Overview.Services/ThingService.cs) created in the [Overview.Services](#services) section.
 
-This can be done as follows:
+This can be done in [`Program.cs`](./overview/node/Overview.Api/Program.cs) as follows:
 
 ```cs
 using System.Text.Json;
