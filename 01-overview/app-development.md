@@ -680,6 +680,11 @@ import { SnackerService } from '../core';
     ]
 })
 export class ThingListComponent implements OnInit {
+    constructor(
+       private snacker: SnackerService,
+       private thingSvc: ThingService
+    ) { }
+
     edit(thing: Thing) {
         this.snacker.sendSuccessMessage(`Editing thing ${thing.name}`);
     }
